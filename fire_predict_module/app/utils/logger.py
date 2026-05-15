@@ -31,7 +31,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_record, ensure_ascii=False)
 
 
-def get_logger(name: str = "predictor_module", level: int = logging.INFO) -> logging.Logger:
+def get_logger(name: str = "module", level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)
 
     if not logger.handlers:
