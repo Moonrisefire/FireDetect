@@ -9,14 +9,16 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Таблица истории детекций
+
 class DetectionLog(Base):
     __tablename__ = "detection_logs"
+
     id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String)
-    is_fire = Column(Boolean)
-    confidence = Column(Float)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    is_fire = Column(Boolean, default=False)
+    confidence = Column(Float, default=0.0)
+    filename = Column(String, nullable=True)
+
 
 Base.metadata.create_all(bind=engine)
 

@@ -1,15 +1,19 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from .api.detection import detection_router
+from .api.prediction import prediction_router
 from .api.system import system_router
-from .api.risk import risk_router
+from .api.cv_analysis import cv_router
 
 import uvicorn
 
 from fastapi.middleware.cors import CORSMiddleware
 
 import logging
+
+from .services.database import SessionLocal, engine, Base
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="шашлыки")
 
@@ -35,9 +39,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(detection_router, prefix="/api/detection")
+app.include_router(prediction_router, prefix="/api/prediction")
 app.include_router(system_router, prefix="/api/system")
-app.include_router(risk_router, prefix="/api/risk")
+app.include_router(cv_router, prefix="/api/cv")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

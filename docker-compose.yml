@@ -11,6 +11,7 @@ services:
         - .env
       networks:
         - app-network
+
 # Потом дополню, если что-то изменится касательно back и front
   backend:
     build:
@@ -24,6 +25,19 @@ services:
     environment:
       - FIRE_PREDICT_URL=http://fire-predict-api:8001/predict
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - app-network
+  
+  detection-module:
+    build:
+      context: ./detection_module
+    container_name: detection_module
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./detection_module:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080
     networks:
       - app-network
 
