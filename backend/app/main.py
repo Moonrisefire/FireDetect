@@ -9,10 +9,19 @@ import uvicorn
 
 from fastapi.middleware.cors import CORSMiddleware
 
+import logging
+
 app = FastAPI(title="шашлыки")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+log = logging.getLogger("fire_predict_module")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    log.error(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,
         content={"message": "Упс! Балбесы на бэке опять что-то сломали.", "details": str(exc)},
