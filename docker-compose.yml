@@ -4,11 +4,8 @@ services:
       build:
         context: ./fire_predict_module
       container_name: fire_predict_api
-      command: uvicorn main:app --host 0.0.0.0 --port 8001
       ports:
         - "8001:8001"
-      env_file:
-        - .env
       networks:
         - app-network
 
