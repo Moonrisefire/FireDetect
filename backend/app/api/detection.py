@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File
-from .app.schemas.schemas import DetectionResponse
+from ..schemas.schemas import DetectionResponse
 
 detection_router = APIRouter()
 

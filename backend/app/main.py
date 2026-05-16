@@ -9,6 +9,7 @@ import uvicorn
 
 from fastapi.middleware.cors import CORSMiddleware
 
+app = FastAPI(title="шашлыки")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -17,8 +18,6 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"message": "Упс! Балбесы на бэке опять что-то сломали.", "details": str(exc)},
     )
 
-
-app = FastAPI(title="шашлыки")
 
 app.add_middleware(
     CORSMiddleware,

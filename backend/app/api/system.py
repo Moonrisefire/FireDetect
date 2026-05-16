@@ -1,4 +1,7 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+from ..services.database import get_db, DetectionLog
 
 system_router = APIRouter()
 

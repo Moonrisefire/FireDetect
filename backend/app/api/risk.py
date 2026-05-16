@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .app.schemas.schemas import RiskResponse, RiskRequest
+from ..schemas.schemas import RiskResponse, RiskRequest
 
 risk_router = APIRouter()
 
