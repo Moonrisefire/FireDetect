@@ -6,11 +6,8 @@ services:
       build:
         context: ./fire_predict_module
       container_name: fire_predict_api
-      command: uvicorn main:app --host 0.0.0.0 --port 8001
       ports:
         - "8001:8001"
-      env_file:
-        - .env
       networks:
         - app-network
 # Потом дополню, если что-то изменится касательно back и front
@@ -23,7 +20,6 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     networks:
       - app-network
 
