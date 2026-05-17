@@ -5,6 +5,8 @@ from ..utils.utils import get_logger
 from ..db.database import get_db
 from ..db import models, schemas
 from ..cv_module.detector import WildfireDetector
+from PIL import Image
+import io
 
 cv_router = APIRouter()
 
@@ -42,6 +44,28 @@ async def detect_fire_from_camera(
     db.refresh(db_log)
 
     return db_log
+
+
+# Полностью замени detect_fire_manual в router.py
+
+@cv_router.post("/detect_manual")
+def detect_fire_manual(file: UploadFile = File(...)): # УБРАЛИ async!
+    logger.info(f"--- НАЧАЛО АНАЛИЗА: {file.filename} ---")
+
+    # Читаем сырые байты СИНХРОННО
+    image_bytes = file.file.read()
+
+    logger.info("Байты прочитаны. Передаем в YOLO...")
+
+    # Передаем байты (detector.py сам умеет делать из них картинку!)
+    cv_result = detector.analyze_image(image_bytes, conf_threshold=0.35)
+
+    logger.info("Анализ завершен!")
+
+    return {
+        "is_fire": cv_result["is_fire"],
+        "detections": cv_result["bounding_boxes"]
+    }
 
 # чё-то с камерами короче
 @cv_router.get("/cameras")

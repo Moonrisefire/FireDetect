@@ -15,11 +15,15 @@ export async function fetchStats() {
 }
 
 export async function detectImage(formData) {
-  const response = await fetch(`${BASE_URL}/api/detection/predict`, {
+  const response = await fetch('http://localhost:8080/api/detect_manual', {
     method: 'POST',
     body: formData,
-  })
-  return handleResponse(response)
+  });
+
+  if (!response.ok) {
+    throw new Error('Network response was not ok');
+  }
+  return response.json();
 }
 
 export async function fetchPrediction() {

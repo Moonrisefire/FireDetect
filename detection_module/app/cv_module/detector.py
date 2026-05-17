@@ -1,7 +1,15 @@
 import io
 from PIL import Image
+import torch
 from ultralytics import YOLO
 
+original_load = torch.load
+
+def patched_load(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return original_load(*args, **kwargs)
+
+torch.load = patched_load
 
 class WildfireDetector:
     def __init__(self, model_path: str = "ml/cv_module/weights/fire_model.pt"):
@@ -30,9 +38,12 @@ class WildfireDetector:
                         max_confidence = conf
 
                     bounding_boxes.append({
-                        "class": class_name,
+                        "label": class_name,  # Заменили class на label
                         "confidence": conf,
-                        "bbox": [round(c, 1) for c in coords]
+                        "x_min": round(coords[0], 1),
+                        "y_min": round(coords[1], 1),
+                        "x_max": round(coords[2], 1),
+                        "y_max": round(coords[3], 1)
                     })
 
             return {

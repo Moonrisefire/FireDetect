@@ -12,10 +12,20 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from .services.database import SessionLocal, engine, Base
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="шашлыки")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Разрешает запросы с любых адресов (для разработки)
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешает POST, GET и т.д.
+    allow_headers=["*"],  # Разрешает отправлять файлы и JSON
+)
 
 logging.basicConfig(
     level=logging.INFO,

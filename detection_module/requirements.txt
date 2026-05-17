@@ -6,7 +6,7 @@ sqlalchemy==2.0.34
 pydantic==2.6.3
 
 # --- Компьютерное зрение ---
-ultralytics==8.0.20
+ultralytics>=8.3.0
 pillow==10.0.1
 
 # --- UI / клиент ---
