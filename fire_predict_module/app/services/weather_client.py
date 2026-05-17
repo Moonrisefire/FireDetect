@@ -1,5 +1,4 @@
 import aiohttp
-import asyncio
 from typing import Dict, Optional
 
 
@@ -18,9 +17,8 @@ class WeatherClient:
             "longitude": lon,
             "past_days": 5,
             "forecast_days": 1,
-            "daily": "temperature_2m_max,wind_speed_10m_max,"
-                     "precipitation_sum,shortwave_radiation_sum,vapor_pressure_deficit_max,"
-                     "soil_moisture_0_to_7cm_mean, relative_humidity_2m",
+            "current": "temperature_2m,relative_humidity_2m,precipitation",
+            "hourly": "temperature_2m,wind_speed_10m,precipitation,shortwave_radiation,vapor_pressure_deficit,soil_moisture_0_to_7cm",
             "timezone": "auto"
         }
         try:
@@ -29,41 +27,66 @@ class WeatherClient:
                     response.raise_for_status()
                     data = await response.json()
 
-                    daily = data.get("daily", {})
-                    if not daily or "temperature_2m_max" not in daily:
+                    current = data.get("current", {})
+                    hourly = data.get("hourly", {})
+
+                    if not hourly or "temperature_2m" not in hourly:
+                        self.logger.warning("Open-Meteo вернул пустой блок почасовых данных.")
                         return None
 
-                    temps = [t for t in daily['temperature_2m_max'][-6:-1] if t is not None]
-                    winds = [w for w in daily['wind_speed_10m_max'][-6:-1] if w is not None]
-                    precips = [p for p in daily['precipitation_sum'][-6:-1] if p is not None]
-                    rads = [r for r in daily['shortwave_radiation_sum'][-6:-1] if r is not None]
-                    vpds = [v for v in daily['vapor_pressure_deficit_max'][-6:-1] if v is not None]
-                    soils = [s for s in daily['soil_moisture_0_to_7cm_mean'][-6:-1] if s is not None]
-                    humidity = [h for h in daily['relative_humidity_2m'][-6:-1] if h is not None]
+                    history_hours = 5 * 24
+
+                    raw_temps = hourly.get("temperature_2m", [])[:history_hours]
+                    raw_winds = hourly.get("wind_speed_10m", [])[:history_hours]
+                    raw_precips = hourly.get("precipitation", [])[:history_hours]
+                    raw_rads = hourly.get("shortwave_radiation", [])[:history_hours]
+                    raw_vpds = hourly.get("vapor_pressure_deficit", [])[:history_hours]
+                    raw_soils = hourly.get("soil_moisture_0_to_7cm", [])[:history_hours]
+
+                    # --- Агрегация фичей под датасет модели ---
+                    daily_max_temps = []
+                    for i in range(0, history_hours, 24):
+                        day_slice = raw_temps[i:i + 24]
+                        if day_slice:
+                            daily_max_temps.append(max(day_slice))
+                    avg_temp_5d = sum(daily_max_temps) / len(daily_max_temps) if daily_max_temps else 0.0
+
+                    max_wind_5d = max(raw_winds) if raw_winds else 0.0
+                    total_precip_5d = sum(raw_precips) if raw_precips else 0.0
+                    avg_rad_5d = sum(raw_rads) / len(raw_rads) if raw_rads else 0.0
+                    avg_vpd_5d = sum(raw_vpds) / len(raw_vpds) if raw_vpds else 0.0
+                    avg_soil_moisture_5d = sum(raw_soils) / len(raw_soils) if raw_soils else 0.0
+
+                    daily_precips = []
+                    for i in range(0, history_hours, 24):
+                        day_slice = raw_precips[i:i + 24]
+                        if day_slice:
+                            daily_precips.append(sum(day_slice))
 
                     days_without_rain = 0
-                    for p in reversed(daily['precipitation_sum'][-6:-1]):
-                        if p is not None and p < 1.0:
+                    for p in reversed(daily_precips):
+                        if p < 1.0:
                             days_without_rain += 1
                         else:
                             break
 
                     weather_data = {
-                        "avg_temp_5d": sum(temps) / len(temps) if temps else 0.0,
-                        "max_wind_5d": max(winds) if winds else 0.0,
-                        "total_precip_5d": sum(precips) if precips else 0.0,
-                        "avg_rad_5d": sum(rads) / len(rads) if rads else 0.0,
-                        "avg_vpd_5d": sum(vpds) / len(vpds) if vpds else 0.0,
-                        "avg_soil_moisture_5d": sum(soils) / len(soils) if soils else 0.0,
+                        "avg_temp_5d": round(avg_temp_5d, 2),
+                        "max_wind_5d": round(max_wind_5d, 2),
+                        "total_precip_5d": round(total_precip_5d, 2),
+                        "avg_rad_5d": round(avg_rad_5d, 2),
+                        "avg_vpd_5d": round(avg_vpd_5d, 3),
+                        "avg_soil_moisture_5d": round(avg_soil_moisture_5d, 3),
                         "days_without_rain": days_without_rain,
-                        "temperature": sum(temps)/ len(temps) if temps else 0.0,
-                        "humidity": sum(humidity)/ len(humidity) if humidity else 0.0,
+
+                        "precipitation": current.get("precipitation", 0.0),  # <-- И СЮДА
+                        "temperature": current.get("temperature_2m", 0.0),
+                        "humidity": current.get("relative_humidity_2m", 50.0)
                     }
 
-                    self.logger.info("Успешно получены 5-дневные данные",
-                                     extra={"extra_data": {"coords": f"{lat},{lon}"}})
+                    self.logger.info("Успешно получены и агрегированы погодные метрики")
                     return weather_data
 
         except Exception as e:
-            self.logger.error("Ошибка при запросе погоды", exc_info=True)
+            self.logger.error("Ошибка при запросе погоды из Open-Meteo API", exc_info=True)
             return None
