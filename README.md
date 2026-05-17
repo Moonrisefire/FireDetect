@@ -304,6 +304,6 @@ POST http://localhost:8080/api/detect_video   ← direct to detection_module (by
 | Frontend | React 19, React Router, Leaflet / React-Leaflet, Vite |
 | Backend | FastAPI, SQLAlchemy 2, SQLite, httpx |
 | Detection | FastAPI, YOLOv8 (ultralytics), Pillow, OpenCV |
-| Prediction | FastAPI, aiohttp, rasterio, scikit-learn (DBSCAN), numpy, CatBoost|
+| Prediction | FastAPI, aiohttp, rasterio, scikit-learn (DBSCAN), numpy |
 | External APIs | Open-Meteo (weather), AWS Element84 STAC (Sentinel-2 satellite) |
 | Infrastructure | Docker, Docker Compose |
