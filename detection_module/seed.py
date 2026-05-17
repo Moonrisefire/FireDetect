@@ -1,5 +1,5 @@
-from .app.db.database import SessionLocal, engine
-from .app.db import models
+from app.db.database import SessionLocal, engine
+from app.db import models
 
 
 def seed_cameras():

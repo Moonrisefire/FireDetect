@@ -10,6 +10,7 @@ function DetectionPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [historyUpdated, setHistoryUpdated] = useState(false)
+  const [fileInputKey, setFileInputKey] = useState(0)
   const imageRef = useRef(null)
 
   useEffect(() => {
@@ -46,6 +47,16 @@ function DetectionPage() {
   function handleImageLoad() {
     if (!imageRef.current) return
     setImageSize({ width: imageRef.current.naturalWidth, height: imageRef.current.naturalHeight })
+  }
+
+  function handleClearAll() {
+    setResult(null)
+    setFile(null)
+    setPreviewUrl('')
+    setImageSize({ width: 0, height: 0 })
+    setError('')
+    setHistoryUpdated(false)
+    setFileInputKey(k => k + 1)
   }
 
   async function handleAnalyze() {
@@ -93,7 +104,7 @@ function DetectionPage() {
       <div className="card card-form">
         <label className="file-field">
           <span>Choose an image</span>
-          <input type="file" accept="image/png,image/jpeg" onChange={handleFileChange} />
+          <input key={fileInputKey} type="file" accept="image/png,image/jpeg" onChange={handleFileChange} />
         </label>
 
         {file && (
@@ -107,13 +118,13 @@ function DetectionPage() {
           <button className="button button-primary" onClick={handleAnalyze} disabled={!canAnalyze}>
             {loading ? 'Analyzing…' : 'Analyze'}
           </button>
-          <button className="button button-secondary" onClick={() => setResult(null)} type="button">
+          <button className="button button-secondary" onClick={handleClearAll} type="button">
             Clear result
           </button>
         </div>
 
         {error && <div className="status-pill status-error">{error}</div>}
-        {historyUpdated && !error && <div className="status-pill status-success">Result saved to history</div>}
+        {historyUpdated && !error && <div className="status-pill status-success">Результат сохранён</div>}
       </div>
 
       {previewUrl && (

@@ -1,75 +1,172 @@
 import asyncio
+import uuid
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
 from app.utils.logger import get_logger
 from app.services.weather_client import WeatherClient
 from app.services.satellite_client import SatelliteClient
 from app.services.ndvi_calculator import NDVICalculator
 
-# Координаты центра Саратовской области
 SARATOV_LAT = 51.5335
 SARATOV_LON = 45.9341
+PIPELINE_INTERVAL = 21600  # 6 hours
+
+_latest_result: dict | None = None
+_pipeline_running: bool = False
+_jobs: dict[str, dict] = {}
+
+logger = get_logger("fire_predictor_api")
 
 
-async def run_prediction_pipeline(logger):
-    """
-    Основной пайплайн, который выполняет один полный цикл проверки.
-    """
-    logger.info("Запуск цикла прогнозирования пожароопасности...")
+class AnalyzeRequest(BaseModel):
+    lat: float
+    lon: float
 
-    # 1. Запрашиваем погоду
+
+def _compute_risk(mean_ndvi: float, weather: dict) -> tuple[str, float]:
+    ndvi_score = max(0.0, 1.0 - abs(mean_ndvi - 0.20) / 0.20)
+    temp_score = min(1.0, max(0.0, (weather["temperature"] - 20) / 20))
+    humidity_score = min(1.0, max(0.0, (60 - weather["humidity"]) / 60))
+    score = round(0.5 * ndvi_score + 0.25 * temp_score + 0.25 * humidity_score, 3)
+    level = "low" if score < 0.35 else "medium" if score < 0.65 else "high"
+    return level, score
+
+
+async def _run_pipeline(lat: float, lon: float) -> dict | None:
     weather_client = WeatherClient(logger)
     satellite_client = SatelliteClient(logger)
     ndvi_calculator = NDVICalculator(logger)
-    weather = await weather_client.get_weather(SARATOV_LAT, SARATOV_LON)
 
+    weather = await weather_client.get_weather(lat, lon)
     if not weather:
-        logger.warning("Не удалось получить погоду. Пропуск цикла до следующего запуска.")
-        return
+        logger.warning("Не удалось получить погоду.")
+        return None
 
-    logger.info("Текущие метеоусловия", extra = {"extra_data" : weather})
+    logger.info("Текущие метеоусловия", extra={"extra_data": weather})
 
-    # 2. Быстрый фильтр (Эвристика)
     if weather["precipitation"] > 1.0 or weather["temperature"] < 5.0:
-        logger.info("Риск пожара минимален (осадки или холодно). Обновляем БД: hazard_level=low")
-        # TODO: async_db_session.execute("UPDATE hazard_predictions SET level='low' ...")
-        return
+        logger.info("Риск пожара минимален (осадки или холодно).")
+        return {
+            "status": "ok",
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "weather": weather,
+            "risk_level": "low",
+            "risk_score": 0.1,
+            "center_lat": lat,
+            "center_lon": lon,
+            "ndvi": None,
+            "problem_areas": [],
+        }
 
-    # 3. Тяжелая логика (запускается только если сухо и тепло)
-    logger.info("Погодные условия способствуют возгоранию. Запуск анализа спутниковых снимков...")
-
-    image_urls = await satellite_client.get_latest_image_urls(SARATOV_LAT, SARATOV_LON)
+    logger.info("Запуск анализа спутниковых снимков...")
+    image_urls = await satellite_client.get_latest_image_urls(lat, lon)
 
     if not image_urls:
-        logger.warning("Снимки не найдены. Цикл завершен.")
-        return
+        logger.warning("Снимки не найдены. Оцениваем риск только по погоде.")
+        return {
+            "status": "ok",
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "weather": weather,
+            "risk_level": "medium",
+            "risk_score": 0.5,
+            "center_lat": lat,
+            "center_lon": lon,
+            "ndvi": None,
+            "problem_areas": [],
+        }
 
-    # 4. Считаем индекс сухости растительности (NDVI)
-    ndvi_value = await ndvi_calculator.get_mean_ndvi(image_urls["red_url"], image_urls["nir_url"])
+    ndvi_result = await ndvi_calculator.get_mean_ndvi(image_urls["red_url"], image_urls["nir_url"])
+    if ndvi_result is None:
+        logger.warning("NDVI вернул None.")
+        return None
 
-    if ndvi_value is None:
-        logger.warning("NDVI вернул None. Что-то пошло не так")
-        return
+    risk_level, risk_score = _compute_risk(ndvi_result["mean_ndvi"], weather)
+    logger.info("Пайплайн завершён.", extra={"extra_data": {"risk_level": risk_level, "risk_score": risk_score}})
 
-    # TODO: probabilities = ml_predictor.predict(weather, ndvi_data)
-    # TODO: save_to_db(probabilities)
+    return {
+        "status": "ok",
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "weather": weather,
+        "risk_level": risk_level,
+        "risk_score": risk_score,
+        "center_lat": lat,
+        "center_lon": lon,
+        "ndvi": {
+            "mean_ndvi": ndvi_result["mean_ndvi"],
+            "total_risk_zones": ndvi_result["total_risk_zones"],
+        },
+        "problem_areas": ndvi_result["problem_areas"],
+    }
 
-    logger.info("Пайплайн успешно завершен. Данные сохранены в БД.")
+
+async def _run_job(job_id: str, lat: float, lon: float):
+    try:
+        result = await _run_pipeline(lat, lon)
+        if result is None:
+            _jobs[job_id] = {"status": "failed", "error": "Pipeline returned no result"}
+        else:
+            _jobs[job_id] = {"status": "done", "result": result}
+    except Exception:
+        logger.error(f"Job {job_id} failed", exc_info=True)
+        _jobs[job_id] = {"status": "failed", "error": "Unexpected error during analysis"}
 
 
-async def main():
-    logger = get_logger("fire_predictor_worker")
-    logger.info("Модуль-воркер инициализирован и запущен")
-
-
+async def _background_loop():
+    global _latest_result, _pipeline_running
     while True:
+        _pipeline_running = True
+        logger.info("Запуск фонового цикла для Саратовской области...")
         try:
-            await run_prediction_pipeline(logger)
+            result = await _run_pipeline(SARATOV_LAT, SARATOV_LON)
+            if result:
+                _latest_result = result
         except Exception:
-            logger.error("Критическая ошибка в пайплайне", exc_info=True)
+            logger.error("Критическая ошибка в фоновом пайплайне", exc_info=True)
+        _pipeline_running = False
+        logger.info(f"Уход в спящий режим на {PIPELINE_INTERVAL} секунд.")
+        await asyncio.sleep(PIPELINE_INTERVAL)
 
-        sleep_time = 21600
-        logger.info(f"Уход в спящий режим на {sleep_time} секунд.")
-        await asyncio.sleep(sleep_time)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(_background_loop())
+    yield
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+app = FastAPI(title="Fire Predict API", lifespan=lifespan)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "pipeline_running": _pipeline_running}
+
+
+@app.get("/predict")
+async def predict():
+    if _latest_result is None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "pending", "message": "Pipeline has not completed its first run yet."},
+        )
+    return _latest_result
+
+
+@app.post("/analyze")
+async def analyze(req: AnalyzeRequest):
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "running"}
+    asyncio.create_task(_run_job(job_id, req.lat, req.lon))
+    return {"job_id": job_id}
+
+
+@app.get("/jobs/{job_id}")
+async def get_job(job_id: str):
+    job = _jobs.get(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return job

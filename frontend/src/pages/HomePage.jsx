@@ -36,12 +36,11 @@ function HomePage() {
     <div className="home-page">
       <section className="hero-card card">
         <div className="hero-copy">
-          <span className="eyebrow">Шашлыки</span>
-          <img src={shashlykImg} alt="ШАШЛЫКИ" className="shashlyk" />
-          <h1>Шашлыки</h1>
+          <span className="eyebrow">FireDetect</span>
+          <h1>FireDetect</h1>
           <p>
             Загружайте изображения для обнаружения пожара, просматривайте недавние результаты 
-            и исследуйте зоны риска возникновения пожара при помощи приложения ШАШЛЫКИ.
+            и исследуйте зоны риска возникновения пожара при помощи приложения FireDetect.
           </p>
           <div className="action-row">
             <Link to="/detection" className="button button-primary">
@@ -76,7 +75,7 @@ function HomePage() {
       <section className="about-card card">
         <h2>Как это работает</h2>
         <p>
-          Фронтенд Шашлыков это небольшое одностраничное приложение, 
+          Фронтенд FireDetect это небольшое одностраничное приложение, 
           которое использует API бэкенда для обнаружения и статистики. 
           Локальный кэш браузера хранит компактную историю недавних анализов, 
           чтобы вы могли быстро просмотреть результаты без зависимости от базы данных.

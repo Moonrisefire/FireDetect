@@ -6,13 +6,13 @@ class SatelliteClient:
         self.logger = logger
         self.stac_url = "https://earth-search.aws.element84.com/v1/search"
 
-    async def get_latest_image_urls(self, lat: float, lon: float, max_cloud_cover: int = 15):
+    async def get_latest_image_urls(self, lat: float, lon: float, max_cloud_cover: int = 30):
         """
-        Ищет последний безоблачный снимок за последние 15 дней.
+        Ищет последний снимок за последние 30 дней с облачностью < 30%.
         Возвращает прямые ссылки на Red (B04) и NIR (B08) каналы.
         """
         end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=15)
+        start_date = end_date - timedelta(days=30)
         date_range = f"{start_date.strftime('%Y-%m-%dT%H:%M:%SZ')}/{end_date.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
         payload = {
