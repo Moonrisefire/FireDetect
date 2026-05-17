@@ -45,19 +45,16 @@ async def detect_fire_from_camera(
 
     return db_log
 
-
-# Полностью замени detect_fire_manual в router.py
-
 @cv_router.post("/detect_manual")
 def detect_fire_manual(file: UploadFile = File(...)): # УБРАЛИ async!
     logger.info(f"--- НАЧАЛО АНАЛИЗА: {file.filename} ---")
 
-    # Читаем сырые байты СИНХРОННО
+    # Читаем сырые байты
     image_bytes = file.file.read()
 
     logger.info("Байты прочитаны. Передаем в YOLO...")
 
-    # Передаем байты (detector.py сам умеет делать из них картинку!)
+    # Передаем байты 
     cv_result = detector.analyze_image(image_bytes, conf_threshold=0.35)
 
     logger.info("Анализ завершен!")
