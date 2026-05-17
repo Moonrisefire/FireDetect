@@ -51,3 +51,19 @@ export async function pollJob(jobId) {
   if (!response.ok) throw new Error('Failed to poll job status')
   return handleResponse(response)
 }
+
+// Добавь эту функцию в api.js
+export async function detectVideo(formData) {
+  const response = await fetch('http://localhost:8080/api/detect_video', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error('Video detection failed');
+  }
+
+  // Читаем ответ как файл и создаем для него ссылку
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
