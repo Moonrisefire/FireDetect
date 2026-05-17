@@ -1,114 +1,163 @@
-import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polygon } from 'react-leaflet'
-import L from 'leaflet'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { MapContainer, TileLayer, Polygon, CircleMarker, Popup, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { fetchPrediction } from '../services/api'
+import { fetchPrediction, startAnalysis, pollJob } from '../services/api'
 
-const iconUrl = new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href
-const iconRetinaUrl = new URL('leaflet/dist/images/marker-icon-2x.png', import.meta.url).href
-const shadowUrl = new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href
+const POLYGON_STYLE = { color: '#e00', weight: 2, fillColor: '#e00', fillOpacity: 0.15 }
+const DOT_STYLE = { radius: 5, color: '#1447e6', fillColor: '#1447e6', fillOpacity: 0.85, weight: 1 }
+const SARATOV = [51.5335, 45.9341]
 
-const defaultIcon = L.icon({
-  iconUrl,
-  iconRetinaUrl,
-  shadowUrl,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-})
-
-L.Marker.prototype.options.icon = defaultIcon
-
-const sampleData = {
-  center: [37.7749, -122.4194],
-  risk: 'Medium',
-  score: 62,
-  temperature: 29,
-  humidity: 38,
-  polygons: [
-    [
-      [37.783, -122.433],
-      [37.783, -122.41],
-      [37.77, -122.41],
-      [37.77, -122.433],
-    ],
-  ],
-  markers: [
-    { position: [37.775, -122.42], popup: 'Predicted risk area' },
-  ],
+function MapCenterTracker({ onMove }) {
+  useMapEvents({ moveend: (e) => onMove(e.target.getCenter()) })
+  return null
 }
 
 function PredictionPage() {
-  const [prediction, setPrediction] = useState(null)
-  const [error, setError] = useState('')
+  const [latestStats, setLatestStats] = useState(null)
+  const [allPolygons, setAllPolygons] = useState([])
+  const [allMarkers, setAllMarkers] = useState([])
+  const [analyzing, setAnalyzing] = useState(false)
+  const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(true)
+  const currentCenter = useRef({ lat: SARATOV[0], lng: SARATOV[1] })
+  const mountedRef = useRef(true)
 
   useEffect(() => {
-    async function loadPrediction() {
-      try {
-        const data = await fetchPrediction()
-        setPrediction(data)
-      } catch (err) {
-        setError('Prediction API is not available yet. Showing sample risk zones.')
-        setPrediction(sampleData)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadPrediction()
+    return () => { mountedRef.current = false }
   }, [])
 
-  const mapCenter = prediction?.center ?? sampleData.center
+  useEffect(() => {
+    fetchPrediction()
+      .then(data => {
+        if (!mountedRef.current) return
+        setLatestStats(data)
+        setAllPolygons(data.polygons || [])
+        setAllMarkers(data.markers || [])
+      })
+      .catch(() => {
+        if (!mountedRef.current) return
+        setStatus('Кэшированный прогноз недоступен. Нажми «Сделать прогноз» для анализа региона.')
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false)
+      })
+  }, [])
+
+  const handleAnalyze = useCallback(async () => {
+    setAnalyzing(true)
+    setStatus('Запускаем анализ…')
+
+    const { lat, lng } = currentCenter.current
+
+    try {
+      const { job_id } = await startAnalysis(lat, lng)
+
+      const poll = async () => {
+        if (!mountedRef.current) return
+        try {
+          const job = await pollJob(job_id)
+          if (job.status === 'done') {
+            const result = job.result
+            setLatestStats(result)
+            setAllPolygons(prev => [...prev, ...result.polygons])
+            setAllMarkers(prev => [...prev, ...result.markers])
+            setStatus(`Готово. Найдено ${result.polygons.length} зон риска.`)
+            setAnalyzing(false)
+          } else if (job.status === 'failed') {
+            setStatus(`Ошибка анализа: ${job.error || 'неизвестная ошибка'}`)
+            setAnalyzing(false)
+          } else {
+            setTimeout(poll, 3000)
+          }
+        } catch {
+          setStatus('Не удалось получить статус задачи.')
+          setAnalyzing(false)
+        }
+      }
+
+      setTimeout(poll, 3000)
+    } catch {
+      setStatus('Не удалось запустить анализ. Проверь соединение с сервером.')
+      setAnalyzing(false)
+    }
+  }, [])
 
   return (
     <div className="prediction-page">
       <div className="page-header">
         <div>
           <h1>Прогноз</h1>
-          <p>Изучай зоны риска возникновения пожара на карте.</p>
+          <p>Прокрути карту до нужного региона и нажми «Сделать прогноз».</p>
         </div>
       </div>
 
       <div className="prediction-grid">
         <div className="card risk-panel">
           <h2>Результаты прогноза</h2>
+
           {loading ? (
-            <div className="status-pill">Загрузка…</div>
+            <div className="status-pill" style={{ marginTop: 18 }}>Загрузка…</div>
           ) : (
             <>
-              {error && <div className="status-pill status-error">{error}</div>}
-              <div className="risk-details">
-                <div>
-                  <span className="stat-label">Уровень риска</span>
-                  <strong>{prediction?.risk_level ?? sampleData.risk}</strong>
+              {latestStats && (
+                <div className="risk-details">
+                  <div>
+                    <span className="stat-label">Уровень риска</span>
+                    <strong>{latestStats.risk_level}</strong>
+                  </div>
+                  <div>
+                    <span className="stat-label">Оценка</span>
+                    <strong>{latestStats.score.toFixed(0)}%</strong>
+                  </div>
+                  <div>
+                    <span className="stat-label">Температура</span>
+                    <strong>{latestStats.temp ?? '—'}°C</strong>
+                  </div>
+                  <div>
+                    <span className="stat-label">Влажность</span>
+                    <strong>{latestStats.humidity ?? '—'}%</strong>
+                  </div>
+                  <div>
+                    <span className="stat-label">Зон риска на карте</span>
+                    <strong>{allPolygons.length}</strong>
+                  </div>
                 </div>
-                <div>
-                  <span className="stat-label">Оценка</span>
-                  <strong>{(prediction?.score ?? sampleData.score / 100).toFixed(0)}</strong>
+              )}
+
+              <button
+                className="button button-primary"
+                style={{ marginTop: 20, width: '100%' }}
+                onClick={handleAnalyze}
+                disabled={analyzing}
+              >
+                {analyzing ? 'Анализируем…' : 'Сделать прогноз'}
+              </button>
+
+              {status && (
+                <div
+                  className={`status-pill ${status.startsWith('Ошибка') || status.startsWith('Не удалось') ? 'status-error' : ''}`}
+                  style={{ marginTop: 12 }}
+                >
+                  {status}
                 </div>
-                <div>
-                  <span className="stat-label">Температура</span>
-                  <strong>{prediction?.temp ?? sampleData.temperature}°C</strong>
-                </div>
-                <div>
-                  <span className="stat-label">Влажность</span>
-                  <strong>{prediction?.humidity ?? sampleData.humidity}%</strong>
-                </div>
-              </div>
+              )}
             </>
           )}
         </div>
 
         <div className="map-card card">
-          <MapContainer center={mapCenter} zoom={12} scrollWheelZoom={false} className="risk-map">
+          <MapContainer center={SARATOV} zoom={10} scrollWheelZoom={true} className="risk-map">
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            {(prediction?.markers ?? sampleData.markers).map((marker, index) => (
-              <Marker key={index} position={marker.position}>
+            <MapCenterTracker onMove={(c) => { currentCenter.current = c }} />
+            {allPolygons.map((polygon, i) =>
+              polygon.length > 0 && (
+                <Polygon key={i} positions={polygon} pathOptions={POLYGON_STYLE} />
+              )
+            )}
+            {allMarkers.map((marker, i) => (
+              <CircleMarker key={i} center={marker.position} pathOptions={DOT_STYLE}>
                 <Popup>{marker.popup}</Popup>
-              </Marker>
-            ))}
-            {(prediction?.polygons ?? sampleData.polygons).map((polygon, index) => (
-              <Polygon key={index} positions={polygon} pathOptions={{ color: '#e05b34', fillOpacity: 0.25 }} />
+              </CircleMarker>
             ))}
           </MapContainer>
         </div>

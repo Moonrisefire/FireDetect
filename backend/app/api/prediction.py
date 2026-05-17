@@ -7,8 +7,9 @@ prediction_router = APIRouter()
 
 PREDICTOR_URL = os.getenv(
     "FIRE_PREDICT_URL",
-    "http://fire-predict-api:8001/predict"
+    "http://fire_predict_api:8001/predict"
 )
+
 
 @prediction_router.post("/predict", response_model=DetectionResponse)
 async def predict_fire(file: UploadFile = File(...)):

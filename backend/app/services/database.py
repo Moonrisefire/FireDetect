@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import datetime
@@ -14,10 +14,12 @@ class DetectionLog(Base):
     __tablename__ = "detection_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    is_fire = Column(Boolean, default=False)
-    confidence = Column(Float, default=0.0)
+    camera_id = Column(Integer, index=True, nullable=True)
     filename = Column(String, nullable=True)
+    is_fire = Column(Boolean, default=False, index=True)
+    confidence = Column(Float, default=0.0)
+    bounding_boxes = Column(JSON, nullable=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 Base.metadata.create_all(bind=engine)

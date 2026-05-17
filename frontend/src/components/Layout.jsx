@@ -23,8 +23,8 @@ function Layout() {
       </main>
 
       <footer className="app-footer">
-        <span>Шашлыки SPA</span>
-        <span>Сделано с любовью к шашлыкам от EstrNous, Moonrisefire и maralex</span>
+        <span>FireDetect SPA</span>
+        <span>Сделано EstrNous, Moonrisefire и maralex</span>
       </footer>
     </div>
   )

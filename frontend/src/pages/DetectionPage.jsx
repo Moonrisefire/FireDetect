@@ -164,7 +164,7 @@ function DetectionPage() {
         </div>
 
         {error && <div className="status-pill status-error">{error}</div>}
-        {historyUpdated && !error && <div className="status-pill status-success">Result saved to history</div>}
+        {historyUpdated && !error && <div className="status-pill status-success">Результат сохранён</div>}
       </div>
 
       {/* Блок ПРЕДПРОСМОТРА (исходный файл) */}
