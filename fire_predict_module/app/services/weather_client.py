@@ -16,7 +16,9 @@ class WeatherClient:
         params = {
             "latitude": lat,
             "longitude": lon,
-            "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m",
+            "current": "temperature_2m,relative_humidity_2m,precipitation,"
+                       "wind_speed_10m,soil_temperature_0cm,soil_moisture_0_to_7cm,"
+                       "vapor_pressure_deficit,shortwave_radiation",
             "timezone": "auto"
         }
         try:
@@ -31,7 +33,11 @@ class WeatherClient:
                         "temperature": current.get("temperature_2m"),
                         "humidity": current.get("relative_humidity_2m"),
                         "precipitation": current.get("precipitation"),
-                        "wind_speed": current.get("wind_speed_10m")
+                        "wind_speed": current.get("wind_speed_10m"),
+                        "soil_temperature": current.get("soil_temperature_0cm"),
+                        "soil_moisture": current.get("soil_moisture_0_to_7cm"),
+                        "vapor_pressure": current.get("vapor_pressure_deficit"),
+                        "shortwave_radiation": current.get("shortwave_radiation")
                     }
 
                     self.logger.info("Успешно получены данные о погоде", extra = {"extra_data" : { "coords": f"{lat},{lon}"}})
