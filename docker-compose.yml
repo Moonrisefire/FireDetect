@@ -1,0 +1,59 @@
+services:
+# Наш модуль предсказания пожаров по спутниковым данным
+  fire-predict-api:
+      build:
+        context: ./fire_predict_module
+      container_name: fire_predict_api
+      ports:
+        - "8001:8001"
+      networks:
+        - app-network
+
+# Потом дополню, если что-то изменится касательно back и front
+  backend:
+    build:
+      context: ./backend
+    container_name: firedetect_api
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - FIRE_PREDICT_URL=http://fire_predict_api:8001/predict
+      - DETECTION_URL=http://detection_module:8080
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - app-network
+  
+  detection-module:
+    build:
+      context: ./detection_module
+    container_name: detection_module
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./detection_module:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8080
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: firedetect_frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

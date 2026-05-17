@@ -1,0 +1,14 @@
+# --- Бэкенд и Сервер ---
+fastapi==0.110.0
+uvicorn==0.27.1
+python-multipart==0.0.6
+sqlalchemy==2.0.34
+pydantic==2.6.3
+
+# --- Компьютерное зрение ---
+ultralytics>=8.3.0
+pillow==10.0.1
+
+# --- UI / клиент ---
+streamlit==1.26.1
+requests==2.31.0
