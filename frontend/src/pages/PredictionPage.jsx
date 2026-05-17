@@ -146,7 +146,7 @@ function PredictionPage() {
         </div>
 
         <div className="map-card card">
-          <MapContainer center={SARATOV} zoom={10} scrollWheelZoom={true} className="risk-map">
+          <MapContainer center={SARATOV} zoom={10} scrollWheelZoom={true} attributionControl={false} className="risk-map">
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             <MapCenterTracker onMove={(c) => { currentCenter.current = c }} />
             {allPolygons.map((polygon, i) =>

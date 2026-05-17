@@ -2,6 +2,7 @@ import os
 from typing import Tuple
 from catboost import CatBoostClassifier
 
+from ..core import config
 
 class FirePredictor:
     def __init__(self, logger, model_path: str = "app/ml/catboost_fire_model.cbm"):
@@ -35,7 +36,6 @@ class FirePredictor:
             raise RuntimeError("Попытка предсказания на незагруженной модели.")
 
         try:
-            # Массив фичей собирается СТРОГО в том порядке, на котором модель обучалась в ноутбуке:
             features = [
                 float(weather_data["avg_temp_5d"]),
                 float(weather_data["max_wind_5d"]),
@@ -53,10 +53,9 @@ class FirePredictor:
             probabilities = self.model.predict_proba([features])
             risk_score = round(float(probabilities[0][1]), 3)
 
-            # Идеальный порог разделения из SHAP-аналитики (0.4992)
-            if risk_score >= 0.75:
+            if risk_score >= config.THRESHOLD_HIGH:
                 risk_level = "high"
-            elif risk_score >= 0.4992:
+            elif risk_score >= config.THRESHOLD_MEDIUM:
                 risk_level = "medium"
             else:
                 risk_level = "low"

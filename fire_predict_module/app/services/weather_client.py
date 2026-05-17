@@ -1,11 +1,13 @@
 import aiohttp
 from typing import Dict, Optional
 
+from ..core import config
+
 
 class WeatherClient:
     def __init__(self, logger):
         self.logger = logger
-        self.base_url = "https://api.open-meteo.com/v1/forecast"
+        self.base_url = config.WEATHER_API_URL
 
     async def get_weather(self, lat: float, lon: float) -> Optional[Dict]:
         """

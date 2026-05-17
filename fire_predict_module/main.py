@@ -12,10 +12,7 @@ from app.services.weather_client import WeatherClient
 from app.services.satellite_client import SatelliteClient
 from app.services.ndvi_calculator import NDVICalculator
 from app.ml.predictor import FirePredictor
-
-SARATOV_LAT = 51.5335
-SARATOV_LON = 45.9341
-PIPELINE_INTERVAL = 21600  # 6 hours
+from app.core import config
 
 _latest_result: dict | None = None
 _pipeline_running: bool = False
@@ -125,14 +122,14 @@ async def _background_loop():
         _pipeline_running = True
         logger.info("Запуск фонового цикла для Саратовской области...")
         try:
-            result = await _run_pipeline(SARATOV_LAT, SARATOV_LON)
+            result = await _run_pipeline(config.DEFAULT_LAT, config.DEFAULT_LON)
             if result:
                 _latest_result = result
         except Exception:
             logger.error("Критическая ошибка в фоновом пайплайне", exc_info=True)
         _pipeline_running = False
-        logger.info(f"Уход в спящий режим на {PIPELINE_INTERVAL} секунд.")
-        await asyncio.sleep(PIPELINE_INTERVAL)
+        logger.info(f"Уход в спящий режим на {config.PIPELINE_INTERVAL} секунд.")
+        await asyncio.sleep(config.PIPELINE_INTERVAL)
 
 
 @asynccontextmanager

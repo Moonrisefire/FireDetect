@@ -6,10 +6,12 @@ from sklearn.cluster import DBSCAN
 from rasterio.warp import transform as warp_transform
 from scipy.ndimage import binary_opening
 
+from ..core import config
+
 class NDVICalculator:
     def __init__(self, logger):
         self.logger = logger
-        self.scale_factor = 10
+        self.scale_factor = config.NDVI_SCALE_FACTOR
 
     def _compute_sync(self, red_url: str, nir_url: str):
         """
@@ -111,7 +113,7 @@ class NDVICalculator:
             "total_risk_zones": len(problem_areas),
             "problem_areas": top_problem_areas
         }
-    
+
     async def get_mean_ndvi(self, red_url: str, nir_url: str):
         """
         Асинхронная обертка для запуска тяжелой математики в отдельном потоке.

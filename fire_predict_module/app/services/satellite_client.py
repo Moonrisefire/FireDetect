@@ -1,12 +1,14 @@
 import aiohttp
 from datetime import datetime, timedelta, timezone
 
+from ..core import config
+
 class SatelliteClient:
     def __init__(self, logger):
         self.logger = logger
-        self.stac_url = "https://earth-search.aws.element84.com/v1/search"
+        self.stac_url = config.STAC_API_URL
 
-    async def get_latest_image_urls(self, lat: float, lon: float, max_cloud_cover: int = 30):
+    async def get_latest_image_urls(self, lat: float, lon: float, max_cloud_cover: int = config.MAX_CLOUD_COVER):
         """
         Ищет последний снимок за последние 30 дней с облачностью < 30%.
         Возвращает прямые ссылки на Red (B04) и NIR (B08) каналы.
