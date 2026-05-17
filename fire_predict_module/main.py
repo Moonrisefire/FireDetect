@@ -11,6 +11,7 @@ from app.utils.logger import get_logger
 from app.services.weather_client import WeatherClient
 from app.services.satellite_client import SatelliteClient
 from app.services.ndvi_calculator import NDVICalculator
+from app.ml.predictor import FirePredictor
 
 SARATOV_LAT = 51.5335
 SARATOV_LON = 45.9341
@@ -22,19 +23,11 @@ _jobs: dict[str, dict] = {}
 
 logger = get_logger("fire_predictor_api")
 
+predictor: FirePredictor | None = None
 
 class AnalyzeRequest(BaseModel):
     lat: float
     lon: float
-
-
-def _compute_risk(mean_ndvi: float, weather: dict) -> tuple[str, float]:
-    ndvi_score = max(0.0, 1.0 - abs(mean_ndvi - 0.20) / 0.20)
-    temp_score = min(1.0, max(0.0, (weather["temperature"] - 20) / 20))
-    humidity_score = min(1.0, max(0.0, (60 - weather["humidity"]) / 60))
-    score = round(0.5 * ndvi_score + 0.25 * temp_score + 0.25 * humidity_score, 3)
-    level = "low" if score < 0.35 else "medium" if score < 0.65 else "high"
-    return level, score
 
 
 async def _run_pipeline(lat: float, lon: float) -> dict | None:
@@ -56,7 +49,7 @@ async def _run_pipeline(lat: float, lon: float) -> dict | None:
             "last_updated": datetime.now(timezone.utc).isoformat(),
             "weather": weather,
             "risk_level": "low",
-            "risk_score": 0.1,
+            "risk_score": 0.02,
             "center_lat": lat,
             "center_lon": lon,
             "ndvi": None,
@@ -85,8 +78,18 @@ async def _run_pipeline(lat: float, lon: float) -> dict | None:
         logger.warning("NDVI вернул None.")
         return None
 
-    risk_level, risk_score = _compute_risk(ndvi_result["mean_ndvi"], weather)
-    logger.info("Пайплайн завершён.", extra={"extra_data": {"risk_level": risk_level, "risk_score": risk_score}})
+    try:
+        current_month = datetime.now(timezone.utc).month
+        risk_score, risk_level = predictor.predict_risk(
+            weather_data=weather,
+            ndvi_data=ndvi_result,
+            current_month=current_month
+        )
+    except Exception:
+        logger.error("Пайплайн аварийно завершен из-за ошибки инференса.")
+        return None
+
+    logger.info(f"Пайплайн успешно завершен. Score: {risk_score}, Level: {risk_level}")
 
     return {
         "status": "ok",
@@ -134,6 +137,10 @@ async def _background_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global predictor
+    # Поднимаем модель строго при инициализации приложения
+    predictor = FirePredictor(logger)
+
     asyncio.create_task(_background_loop())
     yield
 
