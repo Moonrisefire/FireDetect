@@ -7,6 +7,11 @@ from ..db import models, schemas
 from ..cv_module.detector import WildfireDetector
 from PIL import Image
 import io
+import tempfile
+import os
+import cv2
+from fastapi.responses import FileResponse
+from fastapi import BackgroundTasks
 
 cv_router = APIRouter()
 
@@ -63,6 +68,63 @@ def detect_fire_manual(file: UploadFile = File(...)): # УБРАЛИ async!
         "is_fire": cv_result["is_fire"],
         "detections": cv_result["bounding_boxes"]
     }
+
+
+def cleanup_temp_file(path: str):
+    """Удаляет временный файл после отправки пользователю"""
+    if os.path.exists(path):
+        os.remove(path)
+
+
+@cv_router.post("/detect_video")
+def detect_fire_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    logger.info(f"--- НАЧАЛО АНАЛИЗА ВИДЕО: {file.filename} ---")
+
+    # 1. Сохраняем загруженное видео во временный файл
+    in_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    in_temp.write(file.file.read())
+    in_temp.close()
+
+    # 2. Создаем файл для готового видео
+    out_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
+    out_path = out_temp.name
+    out_temp.close()
+
+    # 3. Настраиваем OpenCV для покадрового чтения
+    cap = cv2.VideoCapture(in_temp.name)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+
+    # Кодек VP80 идеально работает в браузерах
+    fourcc = cv2.VideoWriter_fourcc(*'VP80')
+    out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+
+    # 4. Прогоняем каждый кадр через нейросеть
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # YOLO находит объекты
+        results = detector.model.predict(frame, conf=0.35, verbose=False)
+
+        # Магия: YOLO сама рисует рамки на кадре!
+        annotated_frame = results[0].plot()
+
+        # Записываем кадр в новое видео
+        out.write(annotated_frame)
+
+    # 5. Закрываем файлы и удаляем исходник
+    cap.release()
+    out.release()
+    os.remove(in_temp.name)
+
+    logger.info("Видео успешно обработано!")
+
+    # 6. Возвращаем видео и даем команду удалить его с жесткого диска после отправки
+    background_tasks.add_task(cleanup_temp_file, out_path)
+    return FileResponse(out_path, media_type="video/webm")
 
 # чё-то с камерами короче
 @cv_router.get("/cameras")
