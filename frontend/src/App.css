@@ -288,15 +288,22 @@
 
 .result-preview img {
   border-radius: 16px;
-  width: 100%;
+  display: block;
+
+  max-width: 100%;
   max-height: 560px;
-  object-fit: contain;
+  height: auto;
+  width: auto;
 }
 
 .image-preview {
   position: relative;
   overflow: hidden;
   border-radius: 18px;
+
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .detection-box {

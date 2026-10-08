@@ -40,16 +40,18 @@ def _map_response(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @risk_router.post("/evaluate", response_model=RiskEvaluateResponse)
-async def evaluate(_: RiskRequest):
+async def evaluate(data: RiskRequest):
     url = f"{FIRE_PREDICT_BASE}/predict"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, params={"lat": data.lat, "lon": data.lon})
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"Fire predict service unreachable: {e}")
 
     if resp.status_code == 503:
         raise HTTPException(status_code=503, detail="Fire predict pipeline has not completed its first run yet.")
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail="No cached forecast for this location")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Fire predict service error: {resp.status_code}")
 
