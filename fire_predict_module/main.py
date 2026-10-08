@@ -13,6 +13,8 @@ from app.services.satellite_client import SatelliteClient
 from app.services.ndvi_calculator import NDVICalculator
 from app.ml.predictor import FirePredictor
 from app.core import config
+from app.core.aoi import point_inside_aoi
+from app.services.ndvi_calculator import empty_ndvi
 
 _latest_result: dict | None = None
 _pipeline_running: bool = False
@@ -39,48 +41,25 @@ async def _run_pipeline(lat: float, lon: float) -> dict | None:
 
     logger.info("Текущие метеоусловия", extra={"extra_data": weather})
 
-    if weather["precipitation"] > 1.0 or weather["temperature"] < 5.0:
-        logger.info("Риск пожара минимален (осадки или холодно).")
-        return {
-            "status": "ok",
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-            "weather": weather,
-            "risk_level": "low",
-            "risk_score": 0.02,
-            "center_lat": lat,
-            "center_lon": lon,
-            "ndvi": None,
-            "problem_areas": [],
-        }
-
     logger.info("Запуск анализа спутниковых снимков...")
     image_urls = await satellite_client.get_latest_image_urls(lat, lon)
 
     if not image_urls:
-        logger.warning("Снимки не найдены. Оцениваем риск только по погоде.")
-        return {
-            "status": "ok",
-            "last_updated": datetime.now(timezone.utc).isoformat(),
-            "weather": weather,
-            "risk_level": "medium",
-            "risk_score": 0.5,
-            "center_lat": lat,
-            "center_lon": lon,
-            "ndvi": None,
-            "problem_areas": [],
-        }
-
-    ndvi_result = await ndvi_calculator.get_mean_ndvi(image_urls["red_url"], image_urls["nir_url"])
-    if ndvi_result is None:
-        logger.warning("NDVI вернул None.")
-        return None
+        logger.warning("Снимки не найдены. В модель уходят нули NDVI, как при сборке датасета.")
+        ndvi_result = empty_ndvi()
+    else:
+        ndvi_result = await ndvi_calculator.get_mean_ndvi(
+            image_urls["red_url"], image_urls["nir_url"], lat, lon
+        )
+        if ndvi_result is None:
+            logger.warning("NDVI вернул None.")
+            return None
 
     try:
-        current_month = datetime.now(timezone.utc).month
         risk_score, risk_level = predictor.predict_risk(
             weather_data=weather,
             ndvi_data=ndvi_result,
-            current_month=current_month
+            current_month=int(weather["month"]),
         )
     except Exception:
         logger.error("Пайплайн аварийно завершен из-за ошибки инференса.")
@@ -151,12 +130,22 @@ async def health():
 
 
 @app.get("/predict")
-async def predict():
+async def predict(lat: float | None = None, lon: float | None = None):
     if _latest_result is None:
         return JSONResponse(
             status_code=503,
             content={"status": "pending", "message": "Pipeline has not completed its first run yet."},
         )
+    if lat is not None and lon is not None:
+        covers = point_inside_aoi(
+            lat,
+            lon,
+            _latest_result["center_lat"],
+            _latest_result["center_lon"],
+            config.AOI_BUFFER_DEG,
+        )
+        if not covers:
+            return JSONResponse(status_code=404, content={"error": "No cached forecast for this location"})
     return _latest_result
 
 

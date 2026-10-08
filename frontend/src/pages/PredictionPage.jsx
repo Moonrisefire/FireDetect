@@ -59,8 +59,8 @@ function PredictionPage() {
           if (job.status === 'done') {
             const result = job.result
             setLatestStats(result)
-            setAllPolygons(prev => [...prev, ...result.polygons])
-            setAllMarkers(prev => [...prev, ...result.markers])
+            setAllPolygons(result.polygons || [])
+            setAllMarkers(result.markers || [])
             setStatus(`Готово. Найдено ${result.polygons.length} зон риска.`)
             setAnalyzing(false)
           } else if (job.status === 'failed') {
@@ -107,7 +107,7 @@ function PredictionPage() {
                   </div>
                   <div>
                     <span className="stat-label">Оценка</span>
-                    <strong>{latestStats.score.toFixed(0)}%</strong>
+                    <strong>{latestStats.score == null ? '—' : Number(latestStats.score).toFixed(0)}%</strong>
                   </div>
                   <div>
                     <span className="stat-label">Температура</span>

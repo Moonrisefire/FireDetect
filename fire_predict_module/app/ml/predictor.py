@@ -5,9 +5,9 @@ from catboost import CatBoostClassifier
 from ..core import config
 
 class FirePredictor:
-    def __init__(self, logger, model_path: str = "app/ml/catboost_fire_model.cbm"):
+    def __init__(self, logger, model_path: str | None = None):
         self.logger = logger
-        self.model_path = model_path
+        self.model_path = model_path or config.MODEL_PATH
         self.model = None
         self._load_model()
 

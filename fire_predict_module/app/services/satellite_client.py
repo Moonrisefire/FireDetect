@@ -10,7 +10,7 @@ class SatelliteClient:
 
     async def get_latest_image_urls(self, lat: float, lon: float, max_cloud_cover: int = config.MAX_CLOUD_COVER):
         """
-        Ищет последний снимок за последние 30 дней с облачностью < 30%.
+        Ищет последний снимок за последние 30 дней с облачностью ниже MAX_CLOUD_COVER.
         Возвращает прямые ссылки на Red (B04) и NIR (B08) каналы.
         """
         end_date = datetime.now(timezone.utc)
