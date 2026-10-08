@@ -68,6 +68,8 @@ The system is built as four independent microservices orchestrated via Docker Co
 | POST | `/api/detect_video` | Process video, returns annotated WebM with bounding boxes |
 | GET | `/api/cameras` | List cameras from the detection module database |
 
+Camera routes are not used by the web UI. The product path is an uploaded image or video.
+
 ### Fire Predict Module (`localhost:8001`)
 
 | Method | Endpoint | Description |

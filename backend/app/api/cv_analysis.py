@@ -1,24 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from ..schemas.schemas import RiskResponse, RiskRequest, DetectionResponse
+from ..schemas.schemas import DetectionResponse
 from ..services.detection_client import detect_image, detect_image_manual, detect_video, list_cameras
 from ..services.database import get_db, DetectionLog
 
 MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 
 cv_router = APIRouter()
-
-
-@cv_router.post("/evaluate", response_model=RiskResponse)
-def evaluate(data: RiskRequest):
-    # тут делать запрос к Метео-API и затем прогонять по алгоритму
-    return {
-        "risk_level": "High",
-        "score": 0.85,
-        "temp": 32.5,
-        "humidity": 15.0
-    }
 
 
 @cv_router.post("/detect", response_model=DetectionResponse)
