@@ -20,7 +20,7 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      - FIRE_PREDICT_URL=http://fire_predict_api:8001/predict
+      - FIRE_PREDICT_BASE_URL=http://fire_predict_api:8001
       - DETECTION_URL=http://detection_module:8080
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     networks:

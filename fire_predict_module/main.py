@@ -19,6 +19,8 @@ from app.services.ndvi_calculator import empty_ndvi
 _latest_result: dict | None = None
 _pipeline_running: bool = False
 _jobs: dict[str, dict] = {}
+_pipeline_lock = asyncio.Semaphore(1)
+_MAX_JOBS = 50
 
 logger = get_logger("fire_predictor_api")
 
@@ -83,30 +85,44 @@ async def _run_pipeline(lat: float, lon: float) -> dict | None:
     }
 
 
+def _store_job(job_id: str, payload: dict) -> None:
+    _jobs[job_id] = payload
+    if len(_jobs) <= _MAX_JOBS:
+        return
+    for key, value in list(_jobs.items()):
+        if key == job_id or value.get("status") == "running":
+            continue
+        del _jobs[key]
+        if len(_jobs) <= _MAX_JOBS:
+            return
+
+
 async def _run_job(job_id: str, lat: float, lon: float):
-    try:
-        result = await _run_pipeline(lat, lon)
-        if result is None:
-            _jobs[job_id] = {"status": "failed", "error": "Pipeline returned no result"}
-        else:
-            _jobs[job_id] = {"status": "done", "result": result}
-    except Exception:
-        logger.error(f"Job {job_id} failed", exc_info=True)
-        _jobs[job_id] = {"status": "failed", "error": "Unexpected error during analysis"}
+    async with _pipeline_lock:
+        try:
+            result = await _run_pipeline(lat, lon)
+            if result is None:
+                _store_job(job_id, {"status": "failed", "error": "Pipeline returned no result"})
+            else:
+                _store_job(job_id, {"status": "done", "result": result})
+        except Exception:
+            logger.error(f"Job {job_id} failed", exc_info=True)
+            _store_job(job_id, {"status": "failed", "error": "Unexpected error during analysis"})
 
 
 async def _background_loop():
     global _latest_result, _pipeline_running
     while True:
-        _pipeline_running = True
         logger.info("Запуск фонового цикла для Саратовской области...")
-        try:
-            result = await _run_pipeline(config.DEFAULT_LAT, config.DEFAULT_LON)
-            if result:
-                _latest_result = result
-        except Exception:
-            logger.error("Критическая ошибка в фоновом пайплайне", exc_info=True)
-        _pipeline_running = False
+        async with _pipeline_lock:
+            _pipeline_running = True
+            try:
+                result = await _run_pipeline(config.DEFAULT_LAT, config.DEFAULT_LON)
+                if result:
+                    _latest_result = result
+            except Exception:
+                logger.error("Критическая ошибка в фоновом пайплайне", exc_info=True)
+            _pipeline_running = False
         logger.info(f"Уход в спящий режим на {config.PIPELINE_INTERVAL} секунд.")
         await asyncio.sleep(config.PIPELINE_INTERVAL)
 
@@ -152,7 +168,7 @@ async def predict(lat: float | None = None, lon: float | None = None):
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "running"}
+    _store_job(job_id, {"status": "running"})
     asyncio.create_task(_run_job(job_id, req.lat, req.lon))
     return {"job_id": job_id}
 

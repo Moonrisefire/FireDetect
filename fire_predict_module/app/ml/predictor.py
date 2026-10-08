@@ -4,6 +4,36 @@ from catboost import CatBoostClassifier
 
 from ..core import config
 
+FEATURE_NAMES = [
+    "avg_temp_5d",
+    "max_wind_5d",
+    "total_precip_5d",
+    "avg_rad_5d",
+    "avg_vpd_5d",
+    "avg_soil_moisture_5d",
+    "days_without_rain",
+    "month",
+    "mean_ndvi",
+    "dry_area_fraction",
+]
+
+
+def build_feature_vector(weather_data: dict, ndvi_data: dict, current_month: int) -> list:
+    values = {
+        "avg_temp_5d": float(weather_data["avg_temp_5d"]),
+        "max_wind_5d": float(weather_data["max_wind_5d"]),
+        "total_precip_5d": float(weather_data["total_precip_5d"]),
+        "avg_rad_5d": float(weather_data["avg_rad_5d"]),
+        "avg_vpd_5d": float(weather_data["avg_vpd_5d"]),
+        "avg_soil_moisture_5d": float(weather_data["avg_soil_moisture_5d"]),
+        "days_without_rain": int(weather_data["days_without_rain"]),
+        "month": int(current_month),
+        "mean_ndvi": float(ndvi_data["mean_ndvi"]),
+        "dry_area_fraction": float(ndvi_data["dry_area_fraction"]),
+    }
+    return [values[name] for name in FEATURE_NAMES]
+
+
 class FirePredictor:
     def __init__(self, logger, model_path: str | None = None):
         self.logger = logger
@@ -36,18 +66,7 @@ class FirePredictor:
             raise RuntimeError("Попытка предсказания на незагруженной модели.")
 
         try:
-            features = [
-                float(weather_data["avg_temp_5d"]),
-                float(weather_data["max_wind_5d"]),
-                float(weather_data["total_precip_5d"]),
-                float(weather_data["avg_rad_5d"]),
-                float(weather_data["avg_vpd_5d"]),
-                float(weather_data["avg_soil_moisture_5d"]),
-                int(weather_data["days_without_rain"]),
-                int(current_month),
-                float(ndvi_data["mean_ndvi"]),
-                float(ndvi_data["dry_area_fraction"])
-            ]
+            features = build_feature_vector(weather_data, ndvi_data, current_month)
 
             # Получаем вероятность пожара (класс 1)
             probabilities = self.model.predict_proba([features])
