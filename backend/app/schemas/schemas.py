@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Any, List, Optional
+from typing import List, Optional
 
 class DetectionBox(BaseModel):
     label: str
@@ -16,12 +16,6 @@ class DetectionResponse(BaseModel):
 class RiskRequest(BaseModel):
     lat: float
     lon: float
-
-class RiskResponse(BaseModel):
-    risk_level: str  # Low, Medium, High
-    score: float     # 0.0 - 1.0
-    temp: float
-    humidity: float
 
 class MarkerSchema(BaseModel):
     position: List[float]
