@@ -85,21 +85,20 @@ function DetectionPage() {
 
       if (isVideo) {
         // --- ОБРАБОТКА ВИДЕО ---
-        const resultUrl = await detectVideo(formData)
-        setProcessedVideoUrl(resultUrl)
+        const videoResult = await detectVideo(formData)
+        setProcessedVideoUrl(videoResult.url)
 
-        // Добавляем запись в историю для видео
         const item = {
           id: `${Date.now()}-${file.name}`,
           timestamp: Date.now(),
           filename: file.name,
-          is_fire: true, // По умолчанию считаем, что видео отправлено на анализ пожара
-          avgConfidence: 100,
+          is_fire: videoResult.isFire,
+          avgConfidence: videoResult.maxConfidence * 100,
           detections: [],
           previewUrl: previewUrl || '',
         }
         appendHistory(item)
-        setResult({ is_fire: true, detections: [] })
+        setResult({ is_fire: videoResult.isFire, detections: [] })
 
       } else {
         // --- ОБРАБОТКА ФОТО ---

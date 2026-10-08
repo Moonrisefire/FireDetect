@@ -1,8 +1,11 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from ..schemas.schemas import RiskResponse, RiskRequest, DetectionResponse
-from ..services.detection_client import detect_image, detect_image_manual, list_cameras
+from ..services.detection_client import detect_image, detect_image_manual, detect_video, list_cameras
 from ..services.database import get_db, DetectionLog
+
+MAX_UPLOAD_BYTES = 80 * 1024 * 1024
 
 cv_router = APIRouter()
 
@@ -79,6 +82,49 @@ async def detect_manual(
     db.commit()
 
     return {"is_fire": is_fire, "detections": boxes}
+
+
+@cv_router.post("/detect_video")
+async def detect_video_proxy(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File is larger than 80 MB")
+
+    resp = await detect_video(file.filename or "video", contents, file.content_type or "application/octet-stream")
+    if resp.status_code == 413:
+        raise HTTPException(status_code=413, detail="File is larger than 80 MB")
+    if resp.status_code == 422:
+        raise HTTPException(status_code=422, detail="Cannot read video")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Detection service error: {resp.status_code}")
+
+    is_fire = (resp.headers.get("x-is-fire") or "false").lower() == "true"
+    try:
+        confidence = float(resp.headers.get("x-max-confidence") or 0.0)
+    except ValueError:
+        confidence = 0.0
+
+    log = DetectionLog(
+        camera_id=None,
+        filename=file.filename,
+        is_fire=is_fire,
+        confidence=confidence,
+        bounding_boxes=[],
+    )
+    db.add(log)
+    db.commit()
+
+    forwarded = {
+        "X-Is-Fire": resp.headers.get("x-is-fire", "false"),
+        "X-Max-Confidence": resp.headers.get("x-max-confidence", "0"),
+        "X-Frames-Seen": resp.headers.get("x-frames-seen", "0"),
+        "X-Frames-Hit": resp.headers.get("x-frames-hit", "0"),
+    }
+    media_type = resp.headers.get("content-type", "video/webm")
+    return Response(content=resp.content, media_type=media_type, headers=forwarded)
 
 
 @cv_router.get("/cameras")
