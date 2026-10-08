@@ -53,8 +53,9 @@ The system is built as four independent microservices orchestrated via Docker Co
 | GET | `/api/system/stats` | Total images analyzed + average fire-detection confidence |
 | POST | `/api/cv/detect` | Detect fire from a named camera (requires `camera_id`) |
 | POST | `/api/cv/detect_manual` | Detect fire in a manually uploaded image |
-| GET | `/api/cv/cameras` | List all registered cameras from detection_module |
-| POST | `/api/risk/evaluate` | Return the latest cached satellite risk result |
+| POST | `/api/cv/detect_video` | Detect fire in an uploaded video and return an annotated WebM |
+| GET | `/api/cv/cameras` | List registered cameras. Not used by the web UI |
+| POST | `/api/risk/evaluate` | Return the cached forecast when the point lies inside its area. Otherwise 404 |
 | POST | `/api/risk/analyze` | Start async risk analysis for a given `lat`/`lon` |
 | GET | `/api/risk/jobs/{job_id}` | Poll job status (`running` / `done` / `failed`) |
 
@@ -113,7 +114,7 @@ docker compose up --build
 #    Prediction docs:   http://localhost:8001/docs
 ```
 
-The first startup takes a few minutes because Docker needs to build images and the detection module needs to download/load the YOLO model weights (`fire_model.pt`).
+The first startup takes a few minutes because Docker builds the images and the detection module loads the YOLO weights shipped in the repository (`fire_model.pt`).
 
 To stop all services:
 
@@ -203,46 +204,39 @@ POST http://localhost:8000/api/risk/analyze
   2. Spawns asyncio background task for this job
   3. Returns { job_id } immediately (non-blocking)
 
-  [Background Task — run_pipeline(lat, lon, job_id)]
-  Step A — Weather Check (WeatherClient)
-    • Calls Open-Meteo API for current conditions at lat/lon:
-        temperature, humidity, precipitation, wind_speed
-    • Early exit: if precipitation > 1.0mm OR temperature < 5°C → risk_level = "low", skip satellite
-    
-  Step B — Satellite Imagery (SatelliteClient)
-    • Queries AWS Element84 STAC API:
-        collection: sentinel-2-l2a
-        date range: last 30 days
-        cloud cover: < 30%
-        bbox: ±0.5° around the requested point
-    • Picks most recent scene
-    • Returns direct S3 download URLs for the Red band and NIR band
+  [Background Task — run_pipeline(lat, lon)]
+  Step A — Weather (WeatherClient)
+    • Open-Meteo forecast API, daily fields, timezone Europe/Moscow
+    • past 30 days plus today
+    • Model features are the last 5 daily values:
+        mean temperature_2m_max, max wind_speed_10m_max,
+        sum of precipitation_sum, mean shortwave_radiation_sum,
+        mean vapor_pressure_deficit_max, mean soil_moisture_0_to_7cm_mean
+    • days_without_rain walks the whole daily series from the latest day
+    • No weather → job failed. Rain or cold does not skip the model
 
-  Step C — NDVI Calculation (NDVICalculator)
-    • Downloads Red + NIR band rasters from S3
-    • Computes NDVI = (NIR − RED) / (NIR + RED + ε) per pixel
-    • Identifies dry vegetation: pixels where 0.15 < NDVI < 0.25
-    • Runs DBSCAN clustering (eps=5px, min_samples=10) to group dry pixels into zones
-    • For each cluster:
-        - Computes convex hull polygon (converted to WGS84 lat/lon)
-        - Finds geographic center
-        - Records cluster size in pixels
-    • Saves debug visualization to /app/ndvi_clusters.png
-    
-  Step D — Risk Scoring
-    • ndvi_score   = max(0, 1 − |mean_ndvi − 0.20| / 0.20)
-    • temp_score   = clamp((temperature − 20) / 20, 0, 1)
-    • humidity_score = clamp((60 − humidity) / 60, 0, 1)
-    • risk_score   = 0.5 × ndvi_score + 0.25 × temp_score + 0.25 × humidity_score
-    • risk_level:
-        < 0.35  → "low"
-        < 0.65  → "medium"
-        ≥ 0.65  → "high"
-    
+  Step B — Satellite Imagery (SatelliteClient)
+    • AWS Element84 STAC, collection sentinel-2-l2a
+    • last 30 days, cloud cover below 20%
+    • scene that contains the clicked point
+    • URLs for the Red and NIR bands of that full scene
+
+  Step C — NDVI (NDVICalculator)
+    • mean_ndvi and dry_area_fraction are computed on the whole scene
+    • dry pixels are 0.15 < NDVI < 0.25, then a 3×3 opening
+    • DBSCAN polygons are limited to ±0.25° around the click and are not model features
+    • If no scene is found, both NDVI features are 0 and the model still runs
+
+  Step D — CatBoost
+    • The ten features above, in the training order
+    • risk_level: below 0.4992 low, below 0.75 medium, otherwise high
+    • 0.4992 is the F1 threshold from training. 0.75 is only the map split
+
   Step E — Store Result
-    • Writes full result to _jobs[job_id]:
-        { status: "done", result: { risk_level, risk_score, weather, ndvi,
-          center_lat, center_lon, problem_areas: [{ center, polygon, cluster_size }] } }
+    • One analysis at a time
+    • Finished jobs are kept up to about 50
+    • A new map result replaces the previous polygons
+
        │
        ▼
 [Frontend — PredictionPage.jsx polls every 3 seconds]
@@ -277,24 +271,23 @@ User selects a video file and clicks "Detect"
        │
        ▼
 [Frontend — DetectionPage.jsx]
-POST http://localhost:8080/api/detect_video   ← direct to detection_module (bypasses backend)
+POST http://localhost:8000/api/cv/detect_video
   Body: FormData { file: <video> }
        │
        ▼
+[Backend — cv_analysis.py]
+  Forwards the file to detection_module and stores the verdict from response headers
+       │
+       ▼
 [Detection Module — router.py → detect_fire_video()]
-  1. Saves uploaded video to a temp file
-  2. Opens with OpenCV VideoCapture
-  3. For each frame:
-       - Runs YOLO inference
-       - Draws bounding boxes + labels on frame with OpenCV
-  4. Encodes output with VP80 codec (WebM — browser compatible)
-  5. Returns annotated video as FileResponse (binary blob)
+  1. Rejects uploads larger than 80 MB and unreadable video with 422
+  2. Runs YOLO on every 5th frame, at most 300 inferences
+  3. Draws boxes and repeats them on the skipped frames
+  4. Returns WebM plus X-Is-Fire, X-Max-Confidence, X-Frames-Seen, X-Frames-Hit
        │
        ▼
 [Frontend — DetectionPage.jsx]
-  6. Receives binary blob
-  7. Creates object URL: URL.createObjectURL(blob)
-  8. Renders result in a <video> player element
+  Plays the annotated video and writes the real fire verdict into local history
 ```
 
 ---
