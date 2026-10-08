@@ -54,7 +54,7 @@ export async function pollJob(jobId) {
 
 // Добавь эту функцию в api.js
 export async function detectVideo(formData) {
-  const response = await fetch('http://localhost:8080/api/detect_video', {
+  const response = await fetch(`${BASE_URL}/api/cv/detect_video`, {
     method: 'POST',
     body: formData,
   });
@@ -63,7 +63,11 @@ export async function detectVideo(formData) {
     throw new Error('Video detection failed');
   }
 
-  // Читаем ответ как файл и создаем для него ссылку
   const blob = await response.blob();
-  return URL.createObjectURL(blob);
+  const maxConfidence = Number(response.headers.get('x-max-confidence') || 0);
+  return {
+    url: URL.createObjectURL(blob),
+    isFire: (response.headers.get('x-is-fire') || 'false').toLowerCase() === 'true',
+    maxConfidence: Number.isFinite(maxConfidence) ? maxConfidence : 0,
+  };
 }

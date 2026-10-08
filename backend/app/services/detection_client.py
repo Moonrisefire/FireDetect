@@ -37,6 +37,9 @@ async def detect_image(filename: str, contents: bytes, content_type: str, camera
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="Camera not found in detection module")
 
+    if resp.status_code == 422:
+        raise HTTPException(status_code=422, detail="Cannot read image")
+
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Detection service error: {resp.status_code}")
 
@@ -69,12 +72,25 @@ async def detect_image_manual(filename: str, contents: bytes, content_type: str)
     files = {"file": (filename, contents, content_type or "application/octet-stream")}
     url = f"{DETECTION_BASE}/api/detect_manual"
     resp = await _post_with_retries(url, files=files, timeout=20.0)
+    if resp.status_code == 422:
+        raise HTTPException(status_code=422, detail="Cannot read image")
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Detection service error: {resp.status_code}")
     try:
         return resp.json()
     except ValueError:
         raise HTTPException(status_code=502, detail="Detection service returned invalid JSON")
+
+
+async def detect_video(filename: str, contents: bytes, content_type: str) -> httpx.Response:
+    """Forward a video to detection_module and return the raw response, including verdict headers."""
+    files = {"file": (filename, contents, content_type or "application/octet-stream")}
+    url = f"{DETECTION_BASE}/api/detect_video"
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        try:
+            return await client.post(url, files=files)
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"Detection service unreachable: {e}")
 
 
 async def list_cameras() -> list:

@@ -20,6 +20,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Is-Fire", "X-Max-Confidence", "X-Frames-Seen", "X-Frames-Hit"],
 )
 
 logging.basicConfig(
